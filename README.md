@@ -60,13 +60,6 @@
       height: 50px;
       margin: 0 5px;
       font-size: 24px;
-      background: none;
-      border: none;
-    }
-    .control-btn img {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
     }
     #game-over {
       position: absolute;
@@ -95,12 +88,12 @@
     <button id="pauseBtn">Pause</button>
     <div id="controls">
       <div class="control-row">
-        <button class="control-btn" onclick="playerRotate()"><img src="https://cdn-icons-png.flaticon.com/512/60/60525.png" alt="rotate"></button>
+        <button class="control-btn" onclick="playerRotate()">↑</button>
       </div>
       <div class="control-row">
-        <button class="control-btn" id="leftBtn"><img src="https://cdn-icons-png.flaticon.com/512/271/271220.png" alt="left"></button>
-        <button class="control-btn" id="downBtn"><img src="https://cdn-icons-png.flaticon.com/512/271/271210.png" alt="down"></button>
-        <button class="control-btn" id="rightBtn"><img src="https://cdn-icons-png.flaticon.com/512/271/271228.png" alt="right"></button>
+        <button class="control-btn" onclick="playerMove(-1)">←</button>
+        <button class="control-btn" id="downBtn">↓</button>
+        <button class="control-btn" onclick="playerMove(1)">→</button>
       </div>
     </div>
   </div>
@@ -132,9 +125,13 @@
 
     pauseBtn.addEventListener('click', () => {
       pause = !pause;
-      pauseBtn.textContent = pause ? 'Continue' : 'Pause';
-      if (!pause) update();
-      else cancelAnimationFrame(animationFrameId);
+      if (!pause) {
+        pauseBtn.textContent = 'Pause';
+        update();
+      } else {
+        pauseBtn.textContent = 'Continue';
+        cancelAnimationFrame(animationFrameId);
+      }
     });
 
     const downBtn = document.getElementById('downBtn');
@@ -146,25 +143,115 @@
       clearInterval(downInterval);
     });
 
-    function moveToEdge(dir) {
-      do {
-        player.pos.x += dir;
-      } while (!collide(arena, player));
-      player.pos.x -= dir;
+    function arenaSweep() {
+      let rowCount = 1;
+      outer: for (let y = arena.length - 1; y >= 0; --y) {
+        for (let x = 0; x < arena[y].length; ++x) {
+          if (arena[y][x] === 0) {
+            continue outer;
+          }
+        }
+        const row = arena.splice(y, 1)[0].fill(0);
+        arena.unshift(row);
+        ++y;
+        score += rowCount * 10;
+        rowCount *= 2;
+      }
     }
 
-    const leftBtn = document.getElementById('leftBtn');
-    const rightBtn = document.getElementById('rightBtn');
+    function collide(arena, player) {
+      const [m, o] = [player.matrix, player.pos];
+      for (let y = 0; y < m.length; ++y) {
+        for (let x = 0; x < m[y].length; ++x) {
+          if (m[y][x] !== 0 &&
+              (arena[y + o.y] &&
+               arena[y + o.y][x + o.x]) !== 0) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
 
-    leftBtn.addEventListener('touchstart', () => moveToEdge(-1));
-    rightBtn.addEventListener('touchstart', () => moveToEdge(1));
+    function createMatrix(w, h) {
+      const matrix = [];
+      while (h--) matrix.push(new Array(w).fill(0));
+      return matrix;
+    }
 
-    document.addEventListener('keydown', event => {
-      if (event.key === 'ArrowLeft') playerMove(-1);
-      else if (event.key === 'ArrowRight') playerMove(1);
-      else if (event.key === 'ArrowDown') playerDrop();
-      else if (event.key === 'ArrowUp') playerRotate();
-    });
+    function createPiece(type) {
+      const pieces = {
+        T: [[0,0,0],[1,1,1],[0,1,0]],
+        O: [[2,2],[2,2]],
+        L: [[0,3,0],[0,3,0],[0,3,3]],
+        J: [[0,4,0],[0,4,0],[4,4,0]],
+        I: [[0,5,0,0],[0,5,0,0],[0,5,0,0],[0,5,0,0]],
+        S: [[0,6,6],[6,6,0],[0,0,0]],
+        Z: [[7,7,0],[0,7,7],[0,0,0]]
+      };
+      return pieces[type];
+    }
+
+    function drawMatrix(matrix, offset) {
+      matrix.forEach((row, y) => {
+        row.forEach((value, x) => {
+          if (value !== 0) {
+            context.fillStyle = '#333';
+            context.fillRect(x + offset.x, y + offset.y, 1, 1);
+          }
+        });
+      });
+    }
+
+    function draw() {
+      context.fillStyle = '#fff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      drawMatrix(arena, { x: 0, y: 0 });
+      drawMatrix(player.matrix, player.pos);
+    }
+
+    function merge(arena, player) {
+      player.matrix.forEach((row, y) => {
+        row.forEach((value, x) => {
+          if (value !== 0) {
+            arena[y + player.pos.y][x + player.pos.x] = value;
+          }
+        });
+      });
+    }
+
+    function showGameOver() {
+      document.getElementById('game-over').style.display = 'block';
+    }
+
+    function hideGameOver() {
+      document.getElementById('game-over').style.display = 'none';
+    }
+
+    function restartGame() {
+      arena = createMatrix(12, 20);
+      score = 0;
+      updateScore();
+      playerReset();
+      hideGameOver();
+      pause = false;
+      dropCounter = 0;
+      lastTime = 0;
+      pauseBtn.textContent = 'Pause';
+      update();
+    }
+
+    function playerDrop() {
+      player.pos.y++;
+      if (collide(arena, player)) {
+        player.pos.y--;
+        merge(arena, player);
+        playerReset();
+        arenaSweep();
+        updateScore();
+      }
+      dropCounter = 0;
+    }
 
     function playerMove(dir) {
       player.pos.x += dir;
@@ -173,7 +260,59 @@
       }
     }
 
-    // 其餘程式碼保留
+    function playerReset() {
+      const pieces = 'TJLOSZI';
+      player.matrix = createPiece(pieces[Math.floor(Math.random() * pieces.length)]);
+      player.pos.y = 0;
+      player.pos.x = Math.floor(arena[0].length / 2) - Math.floor(player.matrix[0].length / 2);
+      if (collide(arena, player)) {
+        showGameOver();
+        pause = true;
+      }
+    }
+
+    function playerRotate() {
+      const m = player.matrix;
+      for (let y = 0; y < m.length; ++y) {
+        for (let x = 0; x < y; ++x) {
+          [m[x][y], m[y][x]] = [m[y][x], m[x][y]];
+        }
+      }
+      m.forEach(row => row.reverse());
+      if (collide(arena, player)) {
+        for (let i = 0; i < 3; ++i) playerRotate();
+      }
+    }
+
+    let dropCounter = 0;
+    let dropInterval = 1000;
+
+    let lastTime = 0;
+    function update(time = 0) {
+      if (pause) return;
+      const deltaTime = time - lastTime;
+      lastTime = time;
+      dropCounter += deltaTime;
+      if (dropCounter > dropInterval) {
+        playerDrop();
+      }
+      draw();
+      animationFrameId = requestAnimationFrame(update);
+    }
+
+    document.addEventListener('keydown', event => {
+      if (event.key === 'ArrowLeft') playerMove(-1);
+      else if (event.key === 'ArrowRight') playerMove(1);
+      else if (event.key === 'ArrowDown') playerDrop();
+      else if (event.key === 'ArrowUp') playerRotate();
+    });
+
+    let arena = createMatrix(12, 20);
+    const player = { pos: { x: 0, y: 0 }, matrix: null };
+
+    playerReset();
+    updateScore();
+    update();
   </script>
 </body>
 </html>
